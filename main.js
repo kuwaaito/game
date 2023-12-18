@@ -3,9 +3,13 @@ import * as Test from "./lib/test.js";
 export { Test };
 import * as Vector from "./lib/vector.js";
 
+const State = {
+    uuid: 0
+};
 /** @enum { number } */
 const ERROR = {
-    NOT_FOUND:               0x0001
+    NOT_FOUND:               0x0001,
+    UNABLE_TO_PROCESS:       0x0002,
 };
 const Error = {
     /** @type { (filter: boolean, message: string) => void } */
@@ -22,13 +26,18 @@ const CONFIG = {
     DISPLAY_WIDTH:  0x00F0,
     DISPLAY_HEIGHT: 0x00A0,
 
-    DISPLAY_MAGNIFICATION: 0x0001,
+    DISPLAY_MAGNIFICATION: 0x0003,
 
     CAMERA_MIN_ZOOM: 0.1,
 
     DEBUG_MODE:      true,
     DEBUG_DISPLAY:   true,
     DEBUG_INPUT:     true,
+    DEBUG_SPRITE:    true,
+
+    SPRITE_FRAME_DURATION: 0x000A,
+
+    FRAMES_PER_SECOND: 0x003C,
 };
 /** @typedef { { Dimensions: Vector.Entity, Animations: {[key:string]: Array<HTMLCanvasElement> }} } Sprite_Sheet*/
 const Sprite_Sheet = {
@@ -85,26 +94,93 @@ const Sprite_Sheet = {
         };
     }
 };
-Sprite_Sheet.import(
-    "Test Sheet",
-    "data/test.png",
-    {x: 16, y: 16},
-    { "Idle": 1, "Walk": 4}
-);
-/** @typedef { { Position: Vector.Entity, sprite_sheet: string, animation: string, frame: number, timer: number} } Sprite */
+/** @typedef { { Position: Vector.Entity, sprite_sheet: string, animation: string, frame: number, timer: number, uuid: number} } Sprite */
 const Sprite = {
+    /** @type { Array<Sprite> } */
+    List: [],
     /**
      * Create a new sprite
      * @returns { Sprite }
      */
     create: function () {
-        return {
+        const sprite = {
             Position:     {x: 0, y: 0},
             sprite_sheet: "n/a",
             animation:    "Idle",
             frame:        0,
-            timer:        0
+            timer:        0,
+            uuid:         State.uuid++
         }
+        Sprite.List.push(sprite);
+        return sprite;
+    },
+    /**
+     * Delete a sprite
+     * @param {number} uuid - The uuid of the sprite to delete
+     * @returns {ERROR|void} - Returns ERROR.NOT_FOUND if the sprite was not found
+     */
+    remove: function (uuid) {
+        for (let i = 0; i < Sprite.List.length; i++) {
+            if (Sprite.List[i].uuid == uuid) {
+                Sprite.List.splice(i, 1);
+                return;
+            }
+        }
+        // If no sprite was found, emit an error
+        Error.emit(CONFIG.DEBUG_SPRITE, `Sprite with uuid ${uuid} not found.`);
+        return ERROR.NOT_FOUND;
+    },
+    remove_all: function () {
+        Sprite.List = [];
+    },
+    /**
+     * Update a sprite
+     * @param {Sprite} sprite - The sprite to update
+     * @returns {void}
+     */
+    update: function (sprite) {
+        sprite.timer -= 1;
+        if (sprite.timer <= 0) {
+            sprite.frame += 1;
+            sprite.timer = CONFIG.SPRITE_FRAME_DURATION;
+        }
+    },
+    /**
+     * Update all sprites
+     * @returns {void}
+     */
+    update_all: function () {
+        for (const sprite of Sprite.List) {
+            Sprite.update(sprite);
+        }
+    },
+    /**
+     * Draw a sprite
+     * @param {Sprite} sprite - The sprite to draw
+     * @returns {ERROR|void} - Returns ERROR.UNABLE_TO_PROCESS if the sprite could not be drawn
+     */
+    draw: function (sprite) {
+        const result = Display.draw_from_sprite_sheet(
+            sprite.Position,
+            sprite.sprite_sheet,
+            sprite.animation,
+            sprite.frame,
+            Display.Camera.zoom
+        );
+        if (!result) { return; }
+        Error.emit(CONFIG.DEBUG_SPRITE, `Unable to draw sprite with uuid ${sprite.uuid}.`);
+        return ERROR.UNABLE_TO_PROCESS;
+    },
+    /**
+     * Draw all sprites
+     * @returns {ERROR|void} - Returns ERROR.UNABLE_TO_PROCESS if any sprite could not be drawn
+     */
+    draw_all: function () {
+        let result = null;
+        for (const sprite of Sprite.List) {
+            result = Sprite.draw(sprite) || result;
+        }
+        if (result) { return result; }
     }
 };
 const Display = {
@@ -116,7 +192,7 @@ const Display = {
     Camera: {
         Position: {x: 0, y: 0},
         Target:   {x: 0, y: 0},
-        zoom:     1,
+        zoom:     CONFIG.DISPLAY_MAGNIFICATION,
     },
     /**
      * Get the offset of a position relative to the camera
@@ -297,7 +373,7 @@ const Display = {
      * @param {number} zoom             - The zoom level of the sprite
      * @returns {ERROR|void}            - Returns ERROR.NOT_FOUND if Display.Context is null
      */
-    draw_from_sprite_sheet: function (position, sprite_sheet, animation, frame, zoom) {
+    draw_from_sprite_sheet: function (position, sprite_sheet, animation, frame, zoom = 1) {
         const Context = Display.Context;
         if (Context == null) { 
             Error.emit(CONFIG.DEBUG_DISPLAY, "Display.Context is null.");
@@ -313,7 +389,8 @@ const Display = {
             }
             return ERROR.NOT_FOUND;
         }
-        const frame_data = sprite.Animations[animation][frame];
+        const frame_length = sprite.Animations[animation].length;
+        const frame_data = sprite.Animations[animation][frame % frame_length];
         if (frame_data == null) { 
             Error.emit(CONFIG.DEBUG_DISPLAY, `Sprite_Sheet.List[${sprite_sheet}].Animations[${animation}][${frame}] is null.`);
             return ERROR.NOT_FOUND; 
@@ -385,5 +462,29 @@ const Input = {
 document.addEventListener("DOMContentLoaded", () => {
     Display.initialize();
     Input.initialize();
+    Sprite_Sheet.import(
+        "Test Sheet",
+        "data/test.png",
+        {x: 16, y: 16},
+        { "Idle": 1, "Walk": 4}
+    );
+    // Test that everything works by drawing a sprite at a mouse position in a simple gameplay loop
+    const test_sprite = Sprite.create();
+    test_sprite.sprite_sheet = "Test Sheet";
+    test_sprite.animation    = "Walk";
+    test_sprite.frame        = 0;
+    test_sprite.timer        = CONFIG.SPRITE_FRAME_DURATION;
+    const update = function () {
+        // Set up the canvas
+        Display.Context.fillStyle = "black";
+        Display.Context.fillRect(0, 0, Display.Canvas.width, Display.Canvas.height);
+        // Update the sprite position
+        test_sprite.Position = Input.Mouse.Position;
+        // Update the sprite animation
+        Sprite.update(test_sprite);
+        // Draw the sprite
+        Sprite.draw(test_sprite);
+    };
+    setInterval(update, 1000 / CONFIG.FRAMES_PER_SECOND);
 });
 
