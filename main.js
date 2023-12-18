@@ -26,7 +26,7 @@ const CONFIG = {
     DISPLAY_WIDTH:  0x00F0,
     DISPLAY_HEIGHT: 0x00A0,
 
-    DISPLAY_MAGNIFICATION: 0x0002,
+    DISPLAY_MAGNIFICATION: 0x0003,
 
     CAMERA_MIN_ZOOM: 0.1,
 
@@ -167,7 +167,7 @@ const Sprite = {
             sprite.sprite_sheet,
             sprite.animation,
             sprite.frame,
-            Display.Camera.zoom
+            Display.camera_scale()
         );
         if (!result) { return; }
         Error.emit(CONFIG.DEBUG_SPRITE, `Unable to draw sprite with uuid ${sprite.uuid}.`);
@@ -210,12 +210,12 @@ const Display = {
             x: (
                 position.x 
                 - Display.Camera.Position.x                         // Offset by camera position
-            ) * Display.Camera.zoom / CONFIG.DISPLAY_MAGNIFICATION  // Scale by relative zoom
+            ) * Display.Camera.zoom  // Scale by relative zoom
             + Display.Canvas.width / 2                              // Center the camera
             ,y: (
                 position.y 
                 - Display.Camera.Position.y                         // Offset by camera position
-            ) * Display.Camera.zoom / CONFIG.DISPLAY_MAGNIFICATION  // Scale by relative zoom
+            ) * Display.Camera.zoom // Scale by relative zoom
             + Display.Canvas.height / 2                             // Center the camera
         }
     },
@@ -225,7 +225,6 @@ const Display = {
      * @returns { ERROR|Vector.Entity }
      */
     camera_interpret: function (position) {
-        // Translate a position from screen space to world space
         if (Display.Canvas == null) { 
             Error.emit(CONFIG.DEBUG_DISPLAY, "Display.Canvas is null.");
             return ERROR.NOT_FOUND; 
@@ -234,14 +233,18 @@ const Display = {
             x: (
                 position.x 
                 - Display.Canvas.width / 2                          // Center the camera
-            ) * CONFIG.DISPLAY_MAGNIFICATION / Display.Camera.zoom  // Scale by relative zoom
-            + Display.Camera.Position.x                           // Offset by camera position
+            ) / Display.Camera.zoom  // Scale by relative zoom
+            + Display.Camera.Position.x                         // Offset by camera position
             ,y: (
                 position.y 
                 - Display.Canvas.height / 2                         // Center the camera
-            ) * CONFIG.DISPLAY_MAGNIFICATION / Display.Camera.zoom  // Scale by relative zoom
-            + Display.Camera.Position.y                           // Offset by camera position
+            ) / Display.Camera.zoom // Scale by relative zoom
+            + Display.Camera.Position.y                         // Offset by camera position
         }
+    },
+    camera_scale: function () {
+        // how big to draw sprites
+        return Display.Camera.zoom / CONFIG.DISPLAY_MAGNIFICATION * CONFIG.DISPLAY_MAGNIFICATION;
     },
     /** @type { () => ERROR|void } */
     initialize: function () {
@@ -462,6 +465,9 @@ const Input = {
 const SCENE_CODE = {
     PAUSE:      "SCENE_CODE_PAUSE",
 }
+/**
+ * @type { { Tail: Scene | null, List: { [key: string]: Scene }, enter: (name: string) => ERROR|void, leave: () => ERROR|void, update: () => ERROR|void, render: () => ERROR|void } }
+ */
 const Scene = {
     /** @type { Scene | null } */
     Tail: null,
@@ -536,7 +542,14 @@ const Scene = {
                static_sprite_offset.animation    = "Idle";
                static_sprite_offset.frame        = 0;
                static_sprite_offset.timer        = CONFIG.SPRITE_FRAME_DURATION;
-               static_sprite_offset.Position     = {x: 100, y: 50};
+               static_sprite_offset.Position     = {x: 16, y: 16};
+
+               const static_sprite_offset_another = Sprite.create();
+                static_sprite_offset_another.sprite_sheet = "Test Sheet";
+                static_sprite_offset_another.animation    = "Idle";
+                static_sprite_offset_another.frame        = 0;
+                static_sprite_offset_another.timer        = CONFIG.SPRITE_FRAME_DURATION;
+                static_sprite_offset_another.Position     = {x: -8, y: 32};
            },
            leave: function () {},
            update: function () {
@@ -595,7 +608,7 @@ const Scene = {
         if (!scene) { Error.emit(CONFIG.DEBUG_SCENE, `No scenes to render.`); return ERROR.NOT_FOUND; }
         while (scene) {
             const result = scene.update();
-            if (result == Scene.CODE.PAUSE) { break; }
+            if (result == SCENE_CODE.PAUSE) { break; }
             scene = scene.parent_scene;
         }
     },
