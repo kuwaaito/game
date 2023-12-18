@@ -15,7 +15,7 @@ const Error = {
     panic: function () {
         console.error("PANIC!");
     }
-}
+};
 const CONFIG = {
     DISPLAY_ID: "display",
 
@@ -23,6 +23,8 @@ const CONFIG = {
     DISPLAY_HEIGHT: 0x00A0,
 
     DISPLAY_MAGNIFICATION: 0x0001,
+
+    CAMERA_MIN_ZOOM: 0.1,
 
     DEBUG_MODE:      true,
     DEBUG_DISPLAY:   true,
@@ -82,18 +84,91 @@ const Sprite_Sheet = {
             Sprite_Sheet.Loading[name]  = false;
         };
     }
-}
+};
 Sprite_Sheet.import(
     "Test Sheet",
     "data/test.png",
     {x: 16, y: 16},
-    { "Idle": 1, "Walk": 4 }
-)
+    { "Idle": 1, "Walk": 4}
+);
+/** @typedef { { Position: Vector.Entity, sprite_sheet: string, animation: string, frame: number, timer: number} } Sprite */
+const Sprite = {
+    /**
+     * Create a new sprite
+     * @returns { Sprite }
+     */
+    create: function () {
+        return {
+            Position:     {x: 0, y: 0},
+            sprite_sheet: "n/a",
+            animation:    "Idle",
+            frame:        0,
+            timer:        0
+        }
+    }
+};
 const Display = {
     /** @type { HTMLCanvasElement | null } */
     Canvas:     null,
     /** @type { CanvasRenderingContext2D | null } */
     Context:    null,
+    /** @type { { Position: Vector.Entity, Target: Vector.Entity, zoom: number } } */
+    Camera: {
+        Position: {x: 0, y: 0},
+        Target:   {x: 0, y: 0},
+        zoom:     1,
+    },
+    /**
+     * Get the offset of a position relative to the camera
+     * @param {Vector.Entity} position - The position in absolute coordinates
+     * @returns { ERROR|Vector.Entity }
+     */
+    camera_offset: function (position) {
+        if (Display.Canvas == null) { 
+            Error.emit(CONFIG.DEBUG_DISPLAY, "Display.Canvas is null.");
+            return ERROR.NOT_FOUND; 
+        }
+        return {
+            x: (
+                position.x 
+                - Display.Camera.Position.x         // Offset by camera position
+                + Display.Canvas.width / 2          // Center the camera
+                * CONFIG.DISPLAY_MAGNIFICATION      // 
+                / Display.Camera.zoom               // Scale by relative zoom
+            ) * Display.Camera.zoom,
+            y: (
+                position.y 
+                - Display.Camera.Position.y         // Offset by camera position
+                + Display.Canvas.height / 2         // Center the camera
+                * CONFIG.DISPLAY_MAGNIFICATION      // 
+                / Display.Camera.zoom               // Scale by relative zoom
+            ) * Display.Camera.zoom
+        }
+    },
+    /**
+     * Get the position of a point in world space relative to the camera
+     * @param {Vector.Entity} position - The position in screen coordinates
+     * @returns { ERROR|Vector.Entity }
+     */
+    camera_interpret: function (position) {
+        // Translate a position from screen space to world space
+        if (Display.Canvas == null) { 
+            Error.emit(CONFIG.DEBUG_DISPLAY, "Display.Canvas is null.");
+            return ERROR.NOT_FOUND; 
+        }
+        return {
+            x: (
+                ( position.x / Display.Camera.zoom )
+                - ( Display.Canvas.width / 2 * CONFIG.DISPLAY_MAGNIFICATION / Display.Camera.zoom )
+                + Display.Camera.Position.x
+            ),
+            y: (
+                ( position.y / Display.Camera.zoom )
+                - ( Display.Canvas.height / 2 * CONFIG.DISPLAY_MAGNIFICATION / Display.Camera.zoom )
+                + Display.Camera.Position.y
+            )
+        }
+    },
     /** @type { () => ERROR|void } */
     initialize: function () {
         // @ts-ignore
