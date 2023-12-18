@@ -457,108 +457,113 @@ const Input = {
         Input.Keys               = {};
     }
 };
-const Scenes = {
-    "Test_Initialization": {
-        child_scene: null,
-        parent_scene: null,
-        State: {},
-        enter: function () {
-            Display.initialize();
-            Input.initialize();
-            const game_loop = function () {
-                Scene.update();
-                Scene.render();
-            }
-            Scene.enter("Test_Scene");
-            Scenes["Test_Initialization"].State.interval = setInterval(game_loop, 1000 / CONFIG.FRAMES_PER_SECOND);
-        },
-        leave: function () {},
-        update: function () {
-            Sprite.update_all();
-        },
-        render: function () {
-            // Clear the screen
-            if (Display.Context == null) { 
-                Error.emit(CONFIG.DEBUG_DISPLAY, "Display.Context is null.");
-                return ERROR.NOT_FOUND; 
-            }
-            if (Display.Canvas == null) { 
-                Error.emit(CONFIG.DEBUG_DISPLAY, "Display.Canvas is null.");
-                return ERROR.NOT_FOUND; 
-            }
-            Display.Context.clearRect(0, 0, Display.Canvas.width, Display.Canvas.height);
-            Display.Context.fillStyle = "black";
-            Display.Context.fillRect(0, 0, Display.Canvas.width, Display.Canvas.height);
-        },
-    },
-    "Test_Scene": {
-        child_scene: null,
-        parent_scene: null,
-        State: {
-            /** @type { Sprite | null } */
-            test_sprite: null
-        },
-        enter: function () {
-            Sprite_Sheet.import(
-                "Test Sheet",
-                "data/test.png",
-                {x: 16, y: 16},
-                { "Idle": 1, "Walk": 4}
-            );
-            const test_sprite = Sprite.create();
-            test_sprite.sprite_sheet = "Test Sheet";
-            test_sprite.animation    = "Walk";
-            test_sprite.frame        = 0;
-            test_sprite.timer        = CONFIG.SPRITE_FRAME_DURATION;
-            Scenes["Test_Scene"].State.test_sprite = test_sprite;
-            // Create a static sprite just so we can see the world position
-            const static_sprite = Sprite.create();
-            static_sprite.sprite_sheet = "Test Sheet";
-            static_sprite.animation    = "Idle";
-            static_sprite.frame        = 0;
-            static_sprite.timer        = CONFIG.SPRITE_FRAME_DURATION;
-            static_sprite.Position     = {x: 0, y: 0};
-            // Another sprite offset from the first to check camera scaling
-            const static_sprite_offset = Sprite.create();
-            static_sprite_offset.sprite_sheet = "Test Sheet";
-            static_sprite_offset.animation    = "Idle";
-            static_sprite_offset.frame        = 0;
-            static_sprite_offset.timer        = CONFIG.SPRITE_FRAME_DURATION;
-            static_sprite_offset.Position     = {x: 100, y: 50};
-        },
-        leave: function () {},
-        update: function () {
-            // Map the sprite's position to the mouse position
-            const test_sprite = Scenes["Test_Scene"].State.test_sprite;
-            if (test_sprite == null) { 
-                Error.emit(CONFIG.DEBUG_SCENE, "Scenes['Test_Scene'].State.test_sprite is null.");
-                return ERROR.NOT_FOUND; 
-            }
-            // Move the camera based on wasd
-            if (Input.Keys["KeyW"]) { Display.Camera.Position.y -= 1; }
-            if (Input.Keys["KeyA"]) { Display.Camera.Position.x -= 1; }
-            if (Input.Keys["KeyS"]) { Display.Camera.Position.y += 1; }
-            if (Input.Keys["KeyD"]) { Display.Camera.Position.x += 1; }
-            // Zoom with q and e
-            if (Input.Keys["KeyQ"]) { Display.Camera.zoom *= 1.1; }
-            if (Input.Keys["KeyE"]) { Display.Camera.zoom *= 0.9; }
-            const mouse_position = Input.Mouse.Position;
-            const mouse_world_position = Display.camera_interpret(mouse_position);
-            if (typeof mouse_world_position == 'string') { return ERROR.NOT_FOUND; }
-            test_sprite.Position = mouse_world_position;
-        },
-        render: function () {
-            Sprite.draw_all();
-        },
-    }
-};
+/** @typedef { { child_scene: Scene | null, parent_scene: Scene | null, State: any, enter: () => ERROR|void, leave: () => ERROR|void, update: () => ERROR|SCENE_CODE|void, render: () => ERROR|SCENE_CODE|void } } Scene */
+/** @enum { string } */
+const SCENE_CODE = {
+    PAUSE:      "SCENE_CODE_PAUSE",
+}
 const Scene = {
-    /** @enum { string } */
-    CODE: {
-        PAUSE:      "SCENE_CODE_PAUSE",
-    },
+    /** @type { Scene | null } */
     Tail: null,
-    List: Scenes,
+    /** @type { { [key: string]: Scene } } */
+    List: {
+       "Test_Initialization": {
+           child_scene: null,
+           parent_scene: null,
+           State: {
+               interval: null
+           },
+           enter: function () {
+               Display.initialize();
+               Input.initialize();
+               const game_loop = function () {
+                   Scene.update();
+                   Scene.render();
+               }
+               Scene.enter("Test_Scene");
+               Scene.List["Test_Initialization"].State.interval = setInterval(game_loop, 1000 / CONFIG.FRAMES_PER_SECOND);
+           },
+           leave: function () {},
+           update: function () {
+               Sprite.update_all();
+           },
+           render: function () {
+               // Clear the screen
+               if (Display.Context == null) { 
+                   Error.emit(CONFIG.DEBUG_DISPLAY, "Display.Context is null.");
+                   return ERROR.NOT_FOUND; 
+               }
+               if (Display.Canvas == null) { 
+                   Error.emit(CONFIG.DEBUG_DISPLAY, "Display.Canvas is null.");
+                   return ERROR.NOT_FOUND; 
+               }
+               Display.Context.clearRect(0, 0, Display.Canvas.width, Display.Canvas.height);
+               Display.Context.fillStyle = "black";
+               Display.Context.fillRect(0, 0, Display.Canvas.width, Display.Canvas.height);
+           },
+       },
+         /** @type { Scene } */
+       "Test_Scene": {
+           child_scene: null,
+           parent_scene: null,
+           State: {
+               /** @type { Sprite | null } */
+               test_sprite: null
+           },
+           enter: function () {
+               Sprite_Sheet.import(
+                   "Test Sheet",
+                   "data/test.png",
+                   {x: 16, y: 16},
+                   { "Idle": 1, "Walk": 4}
+               );
+               const test_sprite = Sprite.create();
+               test_sprite.sprite_sheet = "Test Sheet";
+               test_sprite.animation    = "Walk";
+               test_sprite.frame        = 0;
+               test_sprite.timer        = CONFIG.SPRITE_FRAME_DURATION;
+               Scene.List["Test_Scene"].State.test_sprite = test_sprite;
+               // Create a static sprite just so we can see the world position
+               const static_sprite = Sprite.create();
+               static_sprite.sprite_sheet = "Test Sheet";
+               static_sprite.animation    = "Idle";
+               static_sprite.frame        = 0;
+               static_sprite.timer        = CONFIG.SPRITE_FRAME_DURATION;
+               static_sprite.Position     = {x: 0, y: 0};
+               // Another sprite offset from the first to check camera scaling
+               const static_sprite_offset = Sprite.create();
+               static_sprite_offset.sprite_sheet = "Test Sheet";
+               static_sprite_offset.animation    = "Idle";
+               static_sprite_offset.frame        = 0;
+               static_sprite_offset.timer        = CONFIG.SPRITE_FRAME_DURATION;
+               static_sprite_offset.Position     = {x: 100, y: 50};
+           },
+           leave: function () {},
+           update: function () {
+               // Map the sprite's position to the mouse position
+               const test_sprite = Scene.List["Test_Scene"].State.test_sprite;
+               if (test_sprite == null) { 
+                   Error.emit(CONFIG.DEBUG_SCENE, "Scenes['Test_Scene'].State.test_sprite is null.");
+                   return ERROR.NOT_FOUND; 
+               }
+               // Move the camera based on wasd
+               if (Input.Keys["KeyW"]) { Display.Camera.Position.y -= 1; }
+               if (Input.Keys["KeyA"]) { Display.Camera.Position.x -= 1; }
+               if (Input.Keys["KeyS"]) { Display.Camera.Position.y += 1; }
+               if (Input.Keys["KeyD"]) { Display.Camera.Position.x += 1; }
+               // Zoom with q and e
+               if (Input.Keys["KeyQ"]) { Display.Camera.zoom *= 1.1; }
+               if (Input.Keys["KeyE"]) { Display.Camera.zoom *= 0.9; }
+               const mouse_position = Input.Mouse.Position;
+               const mouse_world_position = Display.camera_interpret(mouse_position);
+               if (typeof mouse_world_position == 'string') { return ERROR.NOT_FOUND; }
+               test_sprite.Position = mouse_world_position;
+           },
+           render: function () {
+               Sprite.draw_all();
+           },
+       }
+    },
     /**
      * Add a scene to the scene list
      * @param {string} name - The name of the scene
