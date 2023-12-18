@@ -6,10 +6,10 @@ import * as Vector from "./lib/vector.js";
 const State = {
     uuid: 0
 };
-/** @enum { number } */
+/** @enum { string } */
 const ERROR = {
-    NOT_FOUND:               0x0001,
-    UNABLE_TO_PROCESS:       0x0002,
+    NOT_FOUND:               "ERROR_NOT_FOUND",
+    UNABLE_TO_PROCESS:       "ERROR_UNABLE_TO_PROCESS",
 };
 const Error = {
     /** @type { (filter: boolean, message: string) => void } */
@@ -26,7 +26,7 @@ const CONFIG = {
     DISPLAY_WIDTH:  0x00F0,
     DISPLAY_HEIGHT: 0x00A0,
 
-    DISPLAY_MAGNIFICATION: 0x0003,
+    DISPLAY_MAGNIFICATION: 0x0002,
 
     CAMERA_MIN_ZOOM: 0.1,
 
@@ -160,8 +160,10 @@ const Sprite = {
      * @returns {ERROR|void} - Returns ERROR.UNABLE_TO_PROCESS if the sprite could not be drawn
      */
     draw: function (sprite) {
+        const screen_position = Display.camera_offset(sprite.Position);
+        if (typeof screen_position == 'string') { return ERROR.NOT_FOUND; }
         const result = Display.draw_from_sprite_sheet(
-            sprite.Position,
+            screen_position,
             sprite.sprite_sheet,
             sprite.animation,
             sprite.frame,
@@ -207,18 +209,14 @@ const Display = {
         return {
             x: (
                 position.x 
-                - Display.Camera.Position.x         // Offset by camera position
-                + Display.Canvas.width / 2          // Center the camera
-                * CONFIG.DISPLAY_MAGNIFICATION      // 
-                / Display.Camera.zoom               // Scale by relative zoom
-            ) * Display.Camera.zoom,
-            y: (
+                - Display.Camera.Position.x                         // Offset by camera position
+            ) * Display.Camera.zoom / CONFIG.DISPLAY_MAGNIFICATION  // Scale by relative zoom
+            + Display.Canvas.width / 2                              // Center the camera
+            ,y: (
                 position.y 
-                - Display.Camera.Position.y         // Offset by camera position
-                + Display.Canvas.height / 2         // Center the camera
-                * CONFIG.DISPLAY_MAGNIFICATION      // 
-                / Display.Camera.zoom               // Scale by relative zoom
-            ) * Display.Camera.zoom
+                - Display.Camera.Position.y                         // Offset by camera position
+            ) * Display.Camera.zoom / CONFIG.DISPLAY_MAGNIFICATION  // Scale by relative zoom
+            + Display.Canvas.height / 2                             // Center the camera
         }
     },
     /**
@@ -234,15 +232,15 @@ const Display = {
         }
         return {
             x: (
-                ( position.x / Display.Camera.zoom )
-                - ( Display.Canvas.width / 2 * CONFIG.DISPLAY_MAGNIFICATION / Display.Camera.zoom )
-                + Display.Camera.Position.x
-            ),
-            y: (
-                ( position.y / Display.Camera.zoom )
-                - ( Display.Canvas.height / 2 * CONFIG.DISPLAY_MAGNIFICATION / Display.Camera.zoom )
-                + Display.Camera.Position.y
-            )
+                position.x 
+                - Display.Canvas.width / 2                          // Center the camera
+            ) * CONFIG.DISPLAY_MAGNIFICATION / Display.Camera.zoom  // Scale by relative zoom
+            + Display.Camera.Position.x                           // Offset by camera position
+            ,y: (
+                position.y 
+                - Display.Canvas.height / 2                         // Center the camera
+            ) * CONFIG.DISPLAY_MAGNIFICATION / Display.Camera.zoom  // Scale by relative zoom
+            + Display.Camera.Position.y                           // Offset by camera position
         }
     },
     /** @type { () => ERROR|void } */
@@ -459,32 +457,159 @@ const Input = {
         Input.Keys               = {};
     }
 };
+const Scenes = {
+    "Test_Initialization": {
+        child_scene: null,
+        parent_scene: null,
+        State: {},
+        enter: function () {
+            Display.initialize();
+            Input.initialize();
+            const game_loop = function () {
+                Scene.update();
+                Scene.render();
+            }
+            Scene.enter("Test_Scene");
+            Scenes["Test_Initialization"].State.interval = setInterval(game_loop, 1000 / CONFIG.FRAMES_PER_SECOND);
+        },
+        leave: function () {},
+        update: function () {
+            Sprite.update_all();
+        },
+        render: function () {
+            // Clear the screen
+            if (Display.Context == null) { 
+                Error.emit(CONFIG.DEBUG_DISPLAY, "Display.Context is null.");
+                return ERROR.NOT_FOUND; 
+            }
+            if (Display.Canvas == null) { 
+                Error.emit(CONFIG.DEBUG_DISPLAY, "Display.Canvas is null.");
+                return ERROR.NOT_FOUND; 
+            }
+            Display.Context.clearRect(0, 0, Display.Canvas.width, Display.Canvas.height);
+            Display.Context.fillStyle = "black";
+            Display.Context.fillRect(0, 0, Display.Canvas.width, Display.Canvas.height);
+        },
+    },
+    "Test_Scene": {
+        child_scene: null,
+        parent_scene: null,
+        State: {
+            /** @type { Sprite | null } */
+            test_sprite: null
+        },
+        enter: function () {
+            Sprite_Sheet.import(
+                "Test Sheet",
+                "data/test.png",
+                {x: 16, y: 16},
+                { "Idle": 1, "Walk": 4}
+            );
+            const test_sprite = Sprite.create();
+            test_sprite.sprite_sheet = "Test Sheet";
+            test_sprite.animation    = "Walk";
+            test_sprite.frame        = 0;
+            test_sprite.timer        = CONFIG.SPRITE_FRAME_DURATION;
+            Scenes["Test_Scene"].State.test_sprite = test_sprite;
+            // Create a static sprite just so we can see the world position
+            const static_sprite = Sprite.create();
+            static_sprite.sprite_sheet = "Test Sheet";
+            static_sprite.animation    = "Idle";
+            static_sprite.frame        = 0;
+            static_sprite.timer        = CONFIG.SPRITE_FRAME_DURATION;
+            static_sprite.Position     = {x: 0, y: 0};
+            // Another sprite offset from the first to check camera scaling
+            const static_sprite_offset = Sprite.create();
+            static_sprite_offset.sprite_sheet = "Test Sheet";
+            static_sprite_offset.animation    = "Idle";
+            static_sprite_offset.frame        = 0;
+            static_sprite_offset.timer        = CONFIG.SPRITE_FRAME_DURATION;
+            static_sprite_offset.Position     = {x: 100, y: 50};
+        },
+        leave: function () {},
+        update: function () {
+            // Map the sprite's position to the mouse position
+            const test_sprite = Scenes["Test_Scene"].State.test_sprite;
+            if (test_sprite == null) { 
+                Error.emit(CONFIG.DEBUG_SCENE, "Scenes['Test_Scene'].State.test_sprite is null.");
+                return ERROR.NOT_FOUND; 
+            }
+            // Move the camera based on wasd
+            if (Input.Keys["KeyW"]) { Display.Camera.Position.y -= 1; }
+            if (Input.Keys["KeyA"]) { Display.Camera.Position.x -= 1; }
+            if (Input.Keys["KeyS"]) { Display.Camera.Position.y += 1; }
+            if (Input.Keys["KeyD"]) { Display.Camera.Position.x += 1; }
+            // Zoom with q and e
+            if (Input.Keys["KeyQ"]) { Display.Camera.zoom *= 1.1; }
+            if (Input.Keys["KeyE"]) { Display.Camera.zoom *= 0.9; }
+            const mouse_position = Input.Mouse.Position;
+            const mouse_world_position = Display.camera_interpret(mouse_position);
+            if (typeof mouse_world_position == 'string') { return ERROR.NOT_FOUND; }
+            test_sprite.Position = mouse_world_position;
+        },
+        render: function () {
+            Sprite.draw_all();
+        },
+    }
+};
+const Scene = {
+    /** @enum { string } */
+    CODE: {
+        PAUSE:      "SCENE_CODE_PAUSE",
+    },
+    Tail: null,
+    List: Scenes,
+    /**
+     * Add a scene to the scene list
+     * @param {string} name - The name of the scene
+     * @returns {ERROR|void} - Returns ERROR.NOT_FOUND if the scene already exists
+     */
+    enter: function (name) {
+        const scene = Scene.List[name];
+        if (!scene) { Error.emit(CONFIG.DEBUG_SCENE, `Scene ${name} doesn't exist.`); return ERROR.NOT_FOUND; };
+        const previous_tail = Scene.Tail;
+        if (previous_tail) { previous_tail.child_scene = scene; scene.parent_scene = previous_tail; }
+        Scene.Tail = scene;
+        scene.enter();
+    },
+    leave: function () {
+        const scene = Scene.Tail;
+        if (!scene) { Error.emit(CONFIG.DEBUG_SCENE, `No scene to leave.`); return ERROR.NOT_FOUND; };
+        const parent = scene.parent_scene;
+        scene.leave();
+        scene.parent_scene = null;
+        Scene.Tail = parent;
+        if (parent) { parent.child_scene = null; }
+    },
+    /**
+     * @returns {ERROR|void} - Returns an ERROR if no scenes are found
+     */
+    update: function () {
+        // Start at the Head of the scene tree and render each scene
+        let scene = Scene.Tail;
+        if (!scene) { Error.emit(CONFIG.DEBUG_SCENE, `No scenes to render.`); return ERROR.NOT_FOUND; }
+        while (scene) {
+            const result = scene.update();
+            if (result == Scene.CODE.PAUSE) { break; }
+            scene = scene.parent_scene;
+        }
+    },
+    /**
+     * @returns {ERROR|void} - Returns an ERROR if no scenes are found
+     */
+    render: function () {
+        // Start at the Head of the scene tree and render each scene
+        let scene = Scene.Tail;
+        if (!scene) { Error.emit(CONFIG.DEBUG_SCENE, `No scenes to render.`); return ERROR.NOT_FOUND; }
+        while (scene.parent_scene) { scene = scene.parent_scene; }
+        while (scene) {
+            scene.render();
+            scene = scene.child_scene;
+        }
+    }
+};
 document.addEventListener("DOMContentLoaded", () => {
-    Display.initialize();
-    Input.initialize();
-    Sprite_Sheet.import(
-        "Test Sheet",
-        "data/test.png",
-        {x: 16, y: 16},
-        { "Idle": 1, "Walk": 4}
-    );
-    // Test that everything works by drawing a sprite at a mouse position in a simple gameplay loop
-    const test_sprite = Sprite.create();
-    test_sprite.sprite_sheet = "Test Sheet";
-    test_sprite.animation    = "Walk";
-    test_sprite.frame        = 0;
-    test_sprite.timer        = CONFIG.SPRITE_FRAME_DURATION;
-    const update = function () {
-        // Set up the canvas
-        Display.Context.fillStyle = "black";
-        Display.Context.fillRect(0, 0, Display.Canvas.width, Display.Canvas.height);
-        // Update the sprite position
-        test_sprite.Position = Input.Mouse.Position;
-        // Update the sprite animation
-        Sprite.update(test_sprite);
-        // Draw the sprite
-        Sprite.draw(test_sprite);
-    };
-    setInterval(update, 1000 / CONFIG.FRAMES_PER_SECOND);
+    console.log(Display)
+    Scene.enter("Test_Initialization");
 });
 
