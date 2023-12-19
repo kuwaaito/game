@@ -66,7 +66,9 @@ const Vertical_Slice = {
                     Sprite: Sprite.create(),
                     health: 5,
                     size: 16,
+                    speed: 0.25
                 }
+                enemy.Sprite.sprite_sheet = "Placeholder 16x16";
                 Vertical_Slice.State.Enemy_Logic.List.push(enemy);
                 return enemy;
             },
@@ -93,11 +95,16 @@ const Vertical_Slice = {
                 for ( const enemy of enemies ) {
                     if (enemy.health <= 0) { Enemy_Logic.remove(enemy); continue;}
                     const sprite = enemy.Sprite;
-                    sprite.Position.y += 1;
+                    sprite.Position.y += enemy.speed;
                     if (sprite.Position.y < base.Threshold) { continue; }
                     base.Health.current -= enemy.health;
                     Enemy_Logic.remove(enemy);
                 }
+            },
+            get_random: function () {
+                const Enemy_Logic = Vertical_Slice.State.Enemy_Logic;
+                const enemies = Enemy_Logic.List;
+                return enemies[Math.floor(Math.random() * enemies.length)];
             }
         },
         Projectile_Logic: {
@@ -110,6 +117,7 @@ const Vertical_Slice = {
                     size: 8,
                     duration: 120,
                 }
+                projectile.Sprite.sprite_sheet = "Placeholder 8x8";
                 Vertical_Slice.State.Projectile_Logic.List.push(projectile);
                 return projectile;
             },
@@ -121,18 +129,6 @@ const Vertical_Slice = {
                 Sprite.remove(sprite);
             },
             update: function () {
-                if (Input.Mouse.Button.Left == true) {
-                    console.log("Left mouse button pressed.");
-                    const Projectile_Logic = Vertical_Slice.State.Projectile_Logic;
-                    const projectile = Projectile_Logic.create();
-                    const sprite = projectile.Sprite;
-                    sprite.sprite_sheet = "Placeholder 8x8";
-                    sprite.Position.x = Vertical_Slice.State.shooter.Position.x;
-                    sprite.Position.y = Vertical_Slice.State.shooter.Position.y;
-                    const cursor = Vertical_Slice.State.cursor;
-                    const direction = Vector.normalize(Vector.subtract(cursor.Position, sprite.Position));
-                    projectile.Velocity = Vector.scale(direction, 2);
-                }
                 const Projectile_Logic = Vertical_Slice.State.Projectile_Logic;
                 const projectiles = Projectile_Logic.List;
                 const enemies     = Vertical_Slice.State.Enemy_Logic.List;
@@ -150,6 +146,54 @@ const Vertical_Slice = {
                         break;
                     }
                 }
+            }
+        },
+        Turret_Logic: {
+            List: [],
+            create: function () {
+                const turret = {
+                    Sprite: Sprite.create(),
+                    fire_rate: {current: 0, max: 5},
+                    size: 32,
+                }
+                turret.Sprite.sprite_sheet = "Placeholder 32x32";
+                Vertical_Slice.State.Turret_Logic.List.push(turret);
+                return turret;
+            },
+            remove: function (turret) {
+                const index = Vertical_Slice.State.Turret_Logic.List.indexOf(turret);
+                if (index == -1) { Error.emit(CONFIG.DEBUG_SCENE, "Turret not found."); return Error.CODE.NOT_FOUND; }
+                Vertical_Slice.State.Turret_Logic.List.splice(index, 1);
+                const sprite = turret.Sprite;
+                Sprite.remove(sprite);
+            },
+            update: function () {
+                const Turret_Logic = Vertical_Slice.State.Turret_Logic;
+                const turrets = Turret_Logic.List;
+                for ( const turret of turrets ) {
+                    if (turret.fire_rate.current < turret.fire_rate.max) { turret.fire_rate.current++; continue; }
+                    const sprite = turret.Sprite;
+                    const enemy = Turret_Logic.get_closest_enemy(turret);
+                    if (enemy == null) { continue; }
+                    const enemy_sprite = enemy.Sprite;
+                    const direction = Vector.normalize(Vector.subtract(enemy_sprite.Position, sprite.Position));
+                    const projectile = Vertical_Slice.State.Projectile_Logic.create();
+                    projectile.Sprite.Position.x = sprite.Position.x;
+                    projectile.Sprite.Position.y = sprite.Position.y;
+                    projectile.Velocity = Vector.scale(direction, 5);
+                    turret.fire_rate.current = 0;
+                }            
+            },
+            get_closest_enemy: function (turret) {
+                const enemies = Vertical_Slice.State.Enemy_Logic.List;
+                let closest = null;
+                let distance = Infinity;
+                for ( const enemy of enemies ) {
+                    const enemy_sprite = enemy.Sprite;
+                    const d = Vector.distance(turret.Sprite.Position, enemy_sprite.Position);
+                    if (d < distance) { closest = enemy; distance = d; }
+                }
+                return closest;
             }
         }
     },
@@ -178,12 +222,9 @@ const Vertical_Slice = {
         Display.Camera.Position.x = CONFIG.DISPLAY_WIDTH  / 2;
         Display.Camera.Position.y = CONFIG.DISPLAY_HEIGHT / 2;
         // Create shooter
-        this.State.shooter = Sprite.create();
-        const shooter = this.State.shooter;
-        shooter.sprite_sheet = "Placeholder 32x32";
-        shooter.animation = "Idle";
-        shooter.Position.x = 0x0068;
-        shooter.Position.y = 0x0120;
+        const turret = this.State.Turret_Logic.create();
+        turret.Sprite.Position.x = CONFIG.DISPLAY_WIDTH  * 1/2;
+        turret.Sprite.Position.y = CONFIG.DISPLAY_HEIGHT * 3/4;        
         // Create cursor
         this.State.cursor = Sprite.create();
         const cursor = this.State.cursor;
@@ -201,6 +242,7 @@ const Vertical_Slice = {
         if (Input.Keys["KeyQ"]) { Display.Camera.zoom *= 1.1; }
         if (Input.Keys["KeyE"]) { Display.Camera.zoom *= 0.9; }
         this.State.Enemy_Logic.update();
+        this.State.Turret_Logic.update();
         // Update the cursor position
         const cursor    = this.State.cursor;
         cursor.Position = Display.camera_interpret(Input.Mouse.Position);
