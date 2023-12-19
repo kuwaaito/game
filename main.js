@@ -13,12 +13,10 @@ import * as Sprite_Sheet from "./lib/display/sprite/sheet.js";
 export { Sprite_Sheet };
 import * as Display from "./lib/display/main.js";
 export { Display };
-import * as State from "./lib/state.js";
-export { State };
 import * as Scene from "./lib/scene.js";
 export { Scene };
-import * as Scenes from "./data/scenes/main.js";
+import * as Scenes from "./data/scenes/testing.js";
 document.addEventListener("DOMContentLoaded", () => {
-    Scene.enter(Scenes["Test_Initialization"]);
+    Scene.enter(Scenes.Test_Initialization);
 });
 
