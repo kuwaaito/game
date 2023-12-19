@@ -15,8 +15,8 @@ import * as Display from "./lib/display/main.js";
 export { Display };
 import * as Scene from "./lib/scene.js";
 export { Scene };
-import * as Scenes from "./data/scenes/testing.js";
+import * as Scenes from "./data/witch_tower_clone/scenes.js";
 document.addEventListener("DOMContentLoaded", () => {
-    Scene.enter(Scenes.Test_Initialization);
+    Scene.enter(Scenes.Boot);
 });
 
