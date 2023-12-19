@@ -54,9 +54,26 @@ const Vertical_Slice = {
     child_scene: null,
     parent_scene: null,
     State: {
-        Base: {
+        Cursor: {
+            initialize: function () {
+                const Cursor = Vertical_Slice.State.Cursor;
+                Cursor.Sprite = Sprite.create();
+                Cursor.Sprite.sprite_sheet = "Placeholder 8x8";
+            },
+            update: function () {
+                const Cursor = Vertical_Slice.State.Cursor;
+                const sprite = Cursor.Sprite;
+                sprite.Position = Display.camera_interpret(Input.Mouse.Position);
+            },
+            Position: {x: 0, y: 0},
+            Sprite: null
+        },
+        Base_Logic: {
             Threshold: 0x0150,
             Health: { current: 20, max: 20 },
+            Level: 0,
+            Experience: 0,
+            update: function () { console.log(this.Experience)}
         },
         Enemy_Logic: {
             List: [],
@@ -64,7 +81,7 @@ const Vertical_Slice = {
             create: function () {
                 const enemy = {
                     Sprite: Sprite.create(),
-                    health: 5,
+                    Health: {current: 5, max: 5},
                     size: 16,
                     speed: 0.25
                 }
@@ -91,13 +108,21 @@ const Vertical_Slice = {
                         break;
                 }
                 const enemies = Vertical_Slice.State.Enemy_Logic.List;
-                const base    = Vertical_Slice.State.Base;
+                const base    = Vertical_Slice.State.Base_Logic;
                 for ( const enemy of enemies ) {
-                    if (enemy.health <= 0) { Enemy_Logic.remove(enemy); continue;}
                     const sprite = enemy.Sprite;
+                    if (enemy.Health.current <= 0) { 
+                        Enemy_Logic.remove(enemy); 
+                        // Create experience
+                        const experience = Vertical_Slice.State.Upgrade_Logic.create();
+                        experience.Sprite.Position.x = sprite.Position.x;
+                        experience.Sprite.Position.y = sprite.Position.y;
+                        experience.amount = enemy.Health.max;
+                        continue;
+                    }
                     sprite.Position.y += enemy.speed;
                     if (sprite.Position.y < base.Threshold) { continue; }
-                    base.Health.current -= enemy.health;
+                    base.Health.current -= enemy.Health.current;
                     Enemy_Logic.remove(enemy);
                 }
             },
@@ -141,7 +166,7 @@ const Vertical_Slice = {
                     for ( const enemy of enemies ) {
                         const enemy_sprite = enemy.Sprite;
                         if (Vector.distance(sprite.Position, enemy_sprite.Position) > (enemy.size + projectile.size) / 2) { continue; }
-                        enemy.health -= projectile.damage;
+                        enemy.Health.current -= projectile.damage;
                         Projectile_Logic.remove(projectile);
                         break;
                     }
@@ -195,6 +220,46 @@ const Vertical_Slice = {
                 }
                 return closest;
             }
+        },
+        Upgrade_Logic: {
+            List: [],
+            create: function () {
+                const experience = {
+                    Sprite: Sprite.create(),
+                    size: 8,
+                }
+                experience.Sprite.sprite_sheet = "Placeholder 8x8";
+                Vertical_Slice.State.Upgrade_Logic.List.push(experience);
+                return experience;
+            },
+            remove: function (experience) {
+                const index = Vertical_Slice.State.Upgrade_Logic.List.indexOf(experience);
+                if (index == -1) { Error.emit(CONFIG.DEBUG_SCENE, "Experience not found."); return Error.CODE.NOT_FOUND; }
+                Vertical_Slice.State.Upgrade_Logic.List.splice(index, 1);
+                const sprite = experience.Sprite;
+                Sprite.remove(sprite);
+            },
+            update: function () {
+                // Move all experience towards the cursor, starting slow and speeding up depending on distance
+                const Upgrade_Logic = Vertical_Slice.State.Upgrade_Logic;
+                const experiences = Upgrade_Logic.List;
+                const cursor = Vertical_Slice.State.Cursor;
+                const cursor_position = cursor.Sprite.Position;
+                for ( const experience of experiences ) {
+                    const sprite = experience.Sprite;
+                    const direction = Vector.normalize(Vector.subtract(cursor_position, sprite.Position));
+                    const distance = Vector.distance(cursor_position, sprite.Position);
+                    // Move faster when closer to the cursor and slower when further away
+                    const speed = Math.round(100 / distance);
+                    sprite.Position.x += direction.x * speed;
+                    sprite.Position.y += direction.y * speed;
+                    if (distance > experience.size + 8) { continue; }
+                    // Add experience to the base
+                    const base = Vertical_Slice.State.Base_Logic;
+                    base.Experience += experience.amount;
+                    Upgrade_Logic.remove(experience);
+                }
+            }
         }
     },
     enter: function () {
@@ -224,13 +289,9 @@ const Vertical_Slice = {
         // Create shooter
         const turret = this.State.Turret_Logic.create();
         turret.Sprite.Position.x = CONFIG.DISPLAY_WIDTH  * 1/2;
-        turret.Sprite.Position.y = CONFIG.DISPLAY_HEIGHT * 3/4;        
-        // Create cursor
-        this.State.cursor = Sprite.create();
-        const cursor = this.State.cursor;
-        cursor.sprite_sheet = "Placeholder 8x8";
-        cursor.animation = "Idle";
-        cursor.Position  = Input.Mouse.Position;
+        turret.Sprite.Position.y = CONFIG.DISPLAY_HEIGHT * 3/4; 
+        // Initialize the cursor
+        this.State.Cursor.initialize();
     },
     leave: function () {},
     update: function () {
@@ -241,12 +302,13 @@ const Vertical_Slice = {
         // Zoom with q and e
         if (Input.Keys["KeyQ"]) { Display.Camera.zoom *= 1.1; }
         if (Input.Keys["KeyE"]) { Display.Camera.zoom *= 0.9; }
+        this.State.Projectile_Logic.update();
         this.State.Enemy_Logic.update();
         this.State.Turret_Logic.update();
+        this.State.Upgrade_Logic.update();
+        this.State.Base_Logic.update();
         // Update the cursor position
-        const cursor    = this.State.cursor;
-        cursor.Position = Display.camera_interpret(Input.Mouse.Position);
-        this.State.Projectile_Logic.update();
+        this.State.Cursor.update();
     },
     render: function () {
         std.Sprite.draw_all();
